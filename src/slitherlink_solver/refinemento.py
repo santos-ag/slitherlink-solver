@@ -85,3 +85,19 @@ def resolver_com_refinamento(clausulas, var_por_aresta, max_iteracoes=50):
             solver.add_clause(clausula_bloqueio)
 
     return None, iteracoes
+
+
+if __name__ == "__main__":
+    componentes = detectar_componentes_conexos(solucao)
+
+    if len(componentes) > 1:
+        menor_componente = min(componentes, key=len)
+        clausula_bloqueio = gerar_clausula_bloqueio(
+            menor_componente, solucao, var_por_aresta
+        )
+
+        print(f"subciclos detectados: {len(componentes)}")
+        print(f"nós do menor componente: {menor_componente}")
+        print(f"cláusula do bloqueio gerada: {clausula_bloqueio}")
+    else:
+        print("solução válida: 1 loop detectado.")
