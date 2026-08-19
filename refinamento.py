@@ -21,3 +21,7 @@ def detectar_subciclos(grafo):
         variaveis = [dados["var"] for _, _, dados in subgrafo.edges(data=True)]
         componentes.append(variaveis)
     return componentes
+
+
+def clausula_bloqueio(variaveis_subciclo):
+    return [-v for v in variaveis_subciclo]
