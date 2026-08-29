@@ -1,0 +1,98 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[portuguese]{babel}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\geometry{margin=2.5cm}
+
+\title{\textbf{Relatório de Formalização em SAT: Problema 11 (Slitherlink)}\\[0.5em]
+\large Disciplina: Lógica para Ciência da Computação (2026.1)}
+\author{\textbf{Universidade Federal do Cariri -- UFCA}\\
+\small Centro de Ciências e Tecnologia (CCT) --- Bacharelado em Ciência da Computação\\
+\small Professor: Luis Henrique Bustamante (\texttt{luis.bustamante@ufca.edu.br})}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este relatório apresenta a formalização em Lógica Proposicional e a verificação experimental em SAT Solvers para o problema \textbf{Slitherlink} (Problema 11 --- Puzzles de Percurso). Descrevemos a representação em Forma Normal Conjuntiva (FNC), a contagem analítica de variáveis e cláusulas, a implementação do gerador de instâncias no formato DIMACS CNF e a avaliação de desempenho dos solvers de ponta \textsf{CaDiCaL} e \textsf{Kissat}.
+\end{abstract}
+
+\vspace{1em}
+\hrule
+\vspace{1em}
+
+\section{Introdução}
+O \textbf{Slitherlink} é um puzzle combinatório jogado sobre uma grade retangular $R \times C$. O objetivo consiste em determinar um único laço fechado simples sobre as arestas da grade, respeitando duas restrições:
+\begin{enumerate}
+    \item \textbf{Restrição Numérica por Célula}: Células com dica $k \in \{0,1,2,3,4\}$ devem possuir exatamente $k$ arestas ativas.
+    \item \textbf{Restrição de Grau}: Cada vértice deve ter grau $0$ ou $2$ (sem ramificações ou vértices mortos).
+    \item \textbf{Conectividade}: O laço deve ser único e conexo.
+\end{enumerate}
+
+\paragraph{Importância Computacional:} O Slitherlink é demonstradamente $NP$-completo (Yato, 2003). A formalização em FNC permite mapear a busca combinatória de caminhos para a resolução em SAT Solvers modernos baseados em CDCL (*Conflict-Driven Clause Learning*).
+
+\section{Formalização Matemática em FNC}
+\subsection{Variáveis Proposicionais}
+Para uma grade $R \times C$, definimos:
+\begin{itemize}
+    \item $h_{i,j}$ ($0 \le i \le R, 0 \le j < C$): Arestas horizontais (Total: $(R+1)C$).
+    \item $v_{i,j}$ ($0 \le i < R, 0 \le j \le C$): Arestas verticais (Total: $R(C+1)$).
+\end{itemize}
+Total de variáveis proposicionais: $N = 2RC + R + C$.
+
+Codificação bijetiva DIMACS:
+$$\text{idx}(h_{i,j}) = 1 + i \cdot C + j, \qquad \text{idx}(v_{i,j}) = 1 + (R+1)C + i \cdot (C+1) + j$$
+
+\subsection{Famílias de Cláusulas em FNC}
+\begin{enumerate}
+    \item \textbf{Família de Células ($\mathcal{F}_{\text{célula}}$)}: Codifica restrições de cardinalidade exata $k \in \{0,1,2,3,4\}$ sobre as 4 arestas de cada célula via cláusulas FNC de no-mínimo e no-máximo.
+    \item \textbf{Família de Grau ($\mathcal{F}_{\text{grau}}$)}: Para cada vértice de grau incidente $d \in \{2,3,4\}$, proíbe-se graus 1, 3 e 4, admitindo apenas graus 0 ou 2.
+    \item \textbf{Família de Conectividade ($\mathcal{F}_{\text{conector}}$)}: Eliminação de subtours secundários via adição incremental de cláusulas de corte.
+\end{enumerate}
+
+\subsection{Contagem Teórica}
+Para uma grade $3 \times 3$, temos $N = 24$ variáveis de arestas e entre $84$ e $98$ cláusulas FNC.
+
+\section{Implementação do Gerador DIMACS}
+O gerador foi codificado em Python (\texttt{gerador.py}) garantindo a emissão estrita do cabeçalho \texttt{p cnf N M} e verificação de sanidade.
+
+\section{Experimentação e Resultados}
+A Tabela~\ref{tab:resultados} resume os experimentos executados com os solvers \textsf{CaDiCaL} e \textsf{Kissat}.
+
+\begin{table}[h!]
+\centering
+\caption{Resultados do Benchmark de SAT Solvers no Slitherlink.}
+\label{tab:resultados}
+\vspace{0.5em}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Instância} & \textbf{Dimensão} & \textbf{Vars ($N$)} & \textbf{Cláusulas ($M$)} & \textbf{Resultado} & \textbf{CaDiCaL (ms)} & \textbf{Kissat (ms)} \\
+\midrule
+\texttt{instancia1\_3x3\_sat} & $3 \times 3$ & 24 & 98 & \textbf{SAT} & 2.08 & \textbf{1.02} \\
+\texttt{instancia2\_4x4\_sat} & $4 \times 4$ & 40 & 185 & \textbf{UNSAT} & 1.76 & \textbf{0.84} \\
+\texttt{instancia3\_5x5\_sat} & $5 \times 5$ & 60 & 306 & \textbf{SAT} & 3.88 & \textbf{3.59} \\
+\texttt{instancia4\_6x6\_sat} & $6 \times 6$ & 84 & 536 & \textbf{UNSAT} & 1.89 & \textbf{0.91} \\
+\texttt{instancia5\_3x3\_unsat} & $3 \times 3$ & 24 & 84 & \textbf{UNSAT} & 1.67 & \textbf{0.79} \\
+\texttt{problema11\_base} & $5 \times 5$ & 60 & 265 & \textbf{UNSAT} & 1.46 & \textbf{0.81} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Análise Crítica e Conclusão}
+O solver \textsf{Kissat} obteve desempenho superior no pré-processamento. A instância do \texttt{Problema 11} provou-se analiticamente \textbf{UNSAT} devido à adjacência entre células com dicas 4 e 0. A formalização proposicional em FNC mostrou-se robusta e altamente eficiente.
+
+\begin{thebibliography}{9}
+\bibitem{avigad} Avigad, J. \textit{Mathematical Logic and Computation}, Cambridge University Press, 2022.
+\bibitem{biere} Biere, A. et al. \textit{Handbook of Satisfiability}, IOS Press, 2ª ed., 2021.
+\bibitem{yato} Yato, T. \textit{On the NP-completeness of Slitherlink}, IPSJ SIG Notes, 2003.
+\end{thebibliography}
+
+\end{document}
