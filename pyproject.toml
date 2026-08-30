@@ -1,20 +1,14 @@
 [project]
 name = "slitherlink-solver"
 version = "0.1.0"
-description = "Add your description here"
+description = "Formalizacao do Slitherlink em SAT com refinamento de subtours"
 readme = "README.md"
 authors = [
-    { name = "Kayque Pereira", email = "114672278+kaypes@users.noreply.github.com" }
+    { name = "Arthur Oliveira", email = "arthur12.2007g@gmail.com" },
+    { name = "Joao Caique", email = "114672278+kaypes@users.noreply.github.com" },
+    { name = "Gustavo Alexandre dos Santos", email = "santos.ag.dev@gmail.com" },
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
-    "networkx>=3.6.1",
-    "python-sat>=1.9.dev15",
+    "matplotlib>=3.8",
 ]
-
-[project.scripts]
-slitherlink-solver = "slitherlink_solver:main"
-
-[build-system]
-requires = ["uv_build>=0.12.5,<0.13.0"]
-build-backend = "uv_build"
