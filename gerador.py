@@ -8,8 +8,11 @@ Uso:
   python3 gerador.py <linhas> <colunas> "<dicas_linha_por_linha>" > instancia.cnf
 """
 
-import sys
 import os
+import sys
+
+
+EMPTY_TOKENS = {".", "_", "-"}
 
 class SlitherlinkCNF:
     def __init__(self, rows, cols, grid):
@@ -18,6 +21,7 @@ class SlitherlinkCNF:
         cols: número de colunas de células
         grid: matriz rows x cols com inteiros 0, 1, 2, 3, 4 ou None para célula vazia
         """
+        self._validate_grid(rows, cols, grid)
         self.R = rows
         self.C = cols
         self.grid = grid
@@ -30,6 +34,17 @@ class SlitherlinkCNF:
         
         self.clauses = []
         self._build_cnf()
+
+    @staticmethod
+    def _validate_grid(rows, cols, grid):
+        if not isinstance(rows, int) or not isinstance(cols, int) or rows <= 0 or cols <= 0:
+            raise ValueError("As dimensoes da grade devem ser inteiros positivos.")
+        if len(grid) != rows or any(len(row) != cols for row in grid):
+            raise ValueError(f"A grade deve possuir exatamente {rows} linhas e {cols} colunas.")
+        for row in grid:
+            for clue in row:
+                if clue is not None and (not isinstance(clue, int) or not 0 <= clue <= 4):
+                    raise ValueError(f"Dica invalida: {clue!r}. Use apenas valores de 0 a 4 ou '.'.")
 
     def var_h(self, r, c):
         """ Retorna a variável 1-based para a aresta horizontal na linha r, coluna c """
@@ -125,55 +140,128 @@ class SlitherlinkCNF:
                     # Proibir grau 4 (4 v)
                     self.clauses.append([-inc[0], -inc[1], -inc[2], -inc[3]])
 
-        # 3. Pelo menos uma aresta deve ser ativa (evita a solução trivial de 0 arestas se não houver dicas exigindo arestas)
-        # Se houver alguma dica > 0, isso já é garantido, mas adicionamos cláusula genérica se necessário.
+        # 3. Um Slitherlink sempre possui um laco nao vazio.
+        self.clauses.append(list(range(1, self.num_vars + 1)))
+
+    def validate(self):
+        """Verifica limites das variaveis e a estrutura das clausulas geradas."""
+        expected_vars = 2 * self.R * self.C + self.R + self.C
+        if self.num_vars != expected_vars:
+            raise ValueError(
+                f"Numero de variaveis inconsistente: {self.num_vars} != {expected_vars}."
+            )
+        for index, clause in enumerate(self.clauses, start=1):
+            if not clause:
+                raise ValueError(f"Clausula vazia inesperada na posicao {index}.")
+            for literal in clause:
+                if not isinstance(literal, int) or literal == 0 or abs(literal) > self.num_vars:
+                    raise ValueError(f"Literal invalido na clausula {index}: {literal!r}.")
 
     def generate_dimacs(self):
-        # Sanity check: contagem rigorosa
+        self.validate()
         header = f"p cnf {self.num_vars} {len(self.clauses)}"
         lines = [f"c Instancia Slitherlink {self.R}x{self.C}", header]
         for c in self.clauses:
             lines.append(" ".join(map(str, c)) + " 0")
-        return "\n".join(lines)
+        output = "\n".join(lines)
+        validate_dimacs(output)
+        return output
+
+
+def validate_dimacs(content):
+    """Confere se cabecalho, clausulas e variaveis de um DIMACS sao consistentes."""
+    header = None
+    clauses = []
+
+    for line_number, raw_line in enumerate(content.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("c"):
+            continue
+        if line.startswith("p"):
+            if header is not None:
+                raise ValueError("O DIMACS possui mais de um cabecalho.")
+            parts = line.split()
+            if len(parts) != 4 or parts[:2] != ["p", "cnf"]:
+                raise ValueError(f"Cabecalho DIMACS invalido na linha {line_number}.")
+            try:
+                header = int(parts[2]), int(parts[3])
+            except ValueError as exc:
+                raise ValueError(f"Cabecalho DIMACS invalido na linha {line_number}.") from exc
+            continue
+
+        if header is None:
+            raise ValueError("Foi encontrada uma clausula antes do cabecalho DIMACS.")
+        try:
+            literals = [int(token) for token in line.split()]
+        except ValueError as exc:
+            raise ValueError(f"Literal nao inteiro na linha {line_number}.") from exc
+        if not literals or literals[-1] != 0 or 0 in literals[:-1]:
+            raise ValueError(f"Clausula DIMACS invalida na linha {line_number}.")
+        clauses.append(literals[:-1])
+
+    if header is None:
+        raise ValueError("Cabecalho DIMACS ausente.")
+    num_vars, declared_clauses = header
+    if num_vars <= 0 or declared_clauses < 0:
+        raise ValueError("Contagens negativas ou nulas no cabecalho DIMACS.")
+    if declared_clauses != len(clauses):
+        raise ValueError(
+            f"Numero de clausulas inconsistente: cabecalho declara {declared_clauses}, "
+            f"mas foram geradas {len(clauses)}."
+        )
+    for clause in clauses:
+        for literal in clause:
+            if literal == 0 or abs(literal) > num_vars:
+                raise ValueError(f"Literal fora do intervalo 1..{num_vars}: {literal}.")
+    return num_vars, declared_clauses
+
+
+def _tokenize_row(line):
+    return line.split() if any(char.isspace() for char in line) else list(line)
+
+
+def _parse_clue(token):
+    if token in EMPTY_TOKENS:
+        return None
+    if token in {"0", "1", "2", "3", "4"}:
+        return int(token)
+    raise ValueError(f"Dica invalida: {token!r}. Use apenas valores de 0 a 4 ou '.'.")
+
+
+def parse_grid_lines(lines):
+    cleaned = [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    if not cleaned:
+        raise ValueError("A instancia esta vazia.")
+
+    first_tokens = cleaned[0].split()
+    has_dimensions = len(first_tokens) == 2 and all(token.isdigit() for token in first_tokens)
+    if has_dimensions:
+        rows, cols = map(int, first_tokens)
+        raw_rows = cleaned[1:]
+        if rows <= 0 or cols <= 0:
+            raise ValueError("As dimensoes da grade devem ser positivas.")
+        if len(raw_rows) != rows:
+            raise ValueError(f"Esperadas {rows} linhas de celulas, recebidas {len(raw_rows)}.")
+    else:
+        raw_rows = cleaned
+        rows = len(raw_rows)
+        cols = len(_tokenize_row(raw_rows[0]))
+
+    grid = []
+    for row_number, raw_row in enumerate(raw_rows, start=1):
+        tokens = _tokenize_row(raw_row)
+        if len(tokens) != cols:
+            raise ValueError(
+                f"Linha {row_number} possui {len(tokens)} celulas; eram esperadas {cols}."
+            )
+        grid.append([_parse_clue(token) for token in tokens])
+
+    return rows, cols, grid
 
 
 def parse_grid_file(filepath):
-    with open(filepath, 'r') as f:
-        lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-    
-    # Suporta formato:
-    # R C
-    # linha 0
-    # linha 1 ...
-    first_tokens = lines[0].split()
-    if len(first_tokens) == 2 and first_tokens[0].isdigit() and first_tokens[1].isdigit():
-        R, C = int(first_tokens[0]), int(first_tokens[1])
-        raw_rows = lines[1:]
-    else:
-        # Inferir dimensões a partir das linhas
-        raw_rows = lines
-        R = len(raw_rows)
-        C = max(len(row.split()) if ' ' in row else len(row) for row in raw_rows)
-    
-    grid = []
-    for r in range(R):
-        if r < len(raw_rows):
-            line = raw_rows[r]
-            tokens = line.split() if ' ' in line else list(line)
-            row_vals = []
-            for c in range(C):
-                if c < len(tokens):
-                    val = tokens[c]
-                    if val in ('0', '1', '2', '3', '4'):
-                        row_vals.append(int(val))
-                    else:
-                        row_vals.append(None)
-                else:
-                    row_vals.append(None)
-            grid.append(row_vals)
-        else:
-            grid.append([None] * C)
-    return R, C, grid
+    with open(filepath, "r", encoding="utf-8") as instance_file:
+        return parse_grid_lines(instance_file)
 
 def main():
     if len(sys.argv) < 2:
@@ -181,24 +269,21 @@ def main():
         print("Ou:   python3 gerador.py <linhas> <colunas> <dicas_string>", file=sys.stderr)
         sys.exit(1)
 
-    if os.path.exists(sys.argv[1]):
-        R, C, grid = parse_grid_file(sys.argv[1])
-    elif len(sys.argv) >= 4:
-        R = int(sys.argv[1])
-        C = int(sys.argv[2])
-        dicas_str = sys.argv[3].splitlines()
-        grid = []
-        for line in dicas_str:
-            tokens = line.split() if ' ' in line else list(line)
-            row = [int(t) if t in '01234' else None for t in tokens]
-            grid.append(row)
-    else:
-        print("Erro: Instância inválida ou arquivo não encontrado.", file=sys.stderr)
-        sys.exit(1)
+    try:
+        if os.path.isfile(sys.argv[1]):
+            rows, cols, grid = parse_grid_file(sys.argv[1])
+        elif len(sys.argv) == 4:
+            rows = int(sys.argv[1])
+            cols = int(sys.argv[2])
+            inline_lines = [f"{rows} {cols}", *sys.argv[3].splitlines()]
+            rows, cols, grid = parse_grid_lines(inline_lines)
+        else:
+            raise ValueError("Instancia invalida ou arquivo nao encontrado.")
 
-    solver = SlitherlinkCNF(R, C, grid)
-    dimacs_out = solver.generate_dimacs()
-    print(dimacs_out)
+        print(SlitherlinkCNF(rows, cols, grid).generate_dimacs())
+    except (OSError, ValueError) as exc:
+        print(f"Erro: {exc}", file=sys.stderr)
+        sys.exit(2)
 
 if __name__ == '__main__':
     main()
