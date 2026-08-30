@@ -1,0 +1,7 @@
+requisitos.pdf
+__pycache__/
+*.pyc
+.codegraph
+.codegraph/
+.omo/
+.omo
