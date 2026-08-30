@@ -230,7 +230,7 @@ def write_csv(results, output_path):
         "elapsed_ms",
     ]
     with path.open("w", encoding="utf-8", newline="") as output:
-        writer = csv.DictWriter(output, fieldnames=fields)
+        writer = csv.DictWriter(output, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         for result in results:
             row = {field: getattr(result, field) for field in fields}

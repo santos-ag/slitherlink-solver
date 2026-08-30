@@ -2,6 +2,8 @@
 **Disciplina**: Lógica para Ciência da Computação (2026.1)  
 **Professor**: Luis Henrique Bustamante (luis.bustamante@ufca.edu.br)  
 **Universidade**: Universidade Federal do Cariri (UFCA) - CCT / Ciência da Computação  
+**Equipe**: Arthur Oliveira, João Caique e Gustavo Alexandre dos Santos<br>
+**Repositório**: <https://github.com/santos-ag/slitherlink-solver>
 
 ---
 
@@ -11,6 +13,7 @@ O **Slitherlink** (também conhecido como *Loop the Loop*) é um puzzle combinat
 1. **Restrição Numérica por Célula**: Cada célula contendo um valor $k \in \{0, 1, 2, 3, 4\}$ deve ter exatamente $k$ de suas 4 arestas adjacentes pertencentes ao laço. Células vazias não impõem restrição imediata de quantidade de arestas.
 2. **Restrição de Topologia do Laço**: O laço não pode se cruzar nem se ramificar. Isso implica que cada vértice da grade deve ter grau exato **0** (vértice externo ao laço) ou **2** (o laço passa pelo vértice continuamente). Graus 1, 3 e 4 são estritamente proibidos.
 3. **Conectividade (Laço Único)**: Todas as arestas ativas devem formar um único componente conexo e fechado (sem ciclos desconectados secundários ou *subtours*).
+4. **Laço Não Vazio**: Pelo menos uma variável de aresta deve ser verdadeira.
 
 ### Importância Computacional
 Do ponto de vista da Teoria da Computação e Lógica Proposicional, o Slitherlink é um problema de satisfação de restrições de grau $NP$-completo (demonstrado por Takayuki Yato em 2003 via redução do problema do Ciclo Hamiltoniano em grafos planares graus-máximo-3). A modelagem em Forma Normal Conjuntiva (FNC) permite mapear a busca combinatória de caminhos para a teoria de SAT Solvers modernos, alavancando técnicas de *Conflict-Driven Clause Learning* (CDCL), unit propagation e pré-processamento de fórmulas.
@@ -96,6 +99,11 @@ As cláusulas de grau e células garantem localmente que nenhuma aresta fique is
 $$\bigvee_{e \in S_i} \neg x_e$$
 até que um único laço conexo seja obtido.
 
+#### Família 4: Laço Não Vazio
+
+Uma cláusula com todas as variáveis de aresta elimina a atribuição totalmente falsa:
+$$\bigvee_{e \in E} x_e$$
+
 ---
 
 ### 2.3 Contagem Teórica de Variáveis e Cláusulas
@@ -106,10 +114,14 @@ Para uma grade $R \times C$:
   - $2(R-1) + 2(C-1)$ vértices de borda ($d=3$): $4 \times (2R + 2C - 4)$ cláusulas.
   - $(R-1)(C-1)$ vértices internos ($d=4$): $9 \times (R-1)(C-1)$ cláusulas.
 
+Se $n_k$ é a quantidade de células com dica $k$, então:
+$$M_{\text{base}} = M_{\text{grau}} + 4n_0 + 7n_1 + 8n_2 + 7n_3 + 4n_4 + 1$$
+Após o refinamento, $M_{\text{final}} = M_{\text{base}} + q$, onde $q$ é o número de cortes de subtour adicionados.
+
 **Exemplo para $3 \times 3$**:
 - Variáveis: $2(3)(3) + 3 + 3 = 24$.
 - Cláusulas de grau: $8 + 4(4) + 9(4) = 8 + 16 + 36 = 60$ cláusulas.
-- Somando às cláusulas de células (variação entre 4 e 8 por dica), obtém-se exatamente entre 84 e 98 cláusulas.
+- Somando às cláusulas de células e à cláusula de laço não vazio, obtém-se entre 85 e 99 cláusulas para as configurações avaliadas.
 
 ---
 
@@ -133,7 +145,7 @@ O gerador calcula o total de variáveis $N$ e a quantidade exata de cláusulas g
 ```python
 header = f"p cnf {self.num_vars} {len(self.clauses)}"
 ```
-Isso impede que solvers como CaDiCaL e Kissat rejeitem o arquivo por incompatibilidade de formato.
+Além disso, `validate_dimacs` relê a saída e confere o cabeçalho, a quantidade de cláusulas, o terminador `0` e o intervalo de cada literal. Isso impede que solvers como CaDiCaL e Kissat rejeitem o arquivo por incompatibilidade de formato.
 
 ---
 
@@ -143,18 +155,26 @@ Executamos os dois SAT Solvers de ponta recomendados (**CaDiCaL 1.9.5** e **Kiss
 
 ### Tabela de Resultados do Benchmark
 
-| Instância | Dimensão | Variáveis ($N$) | Cláusulas ($M$) | Resultado | Tempo CaDiCaL (ms) | Tempo Kissat (ms) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `instancia1_3x3_sat` | $3 \times 3$ | 24 | 98 | **SAT** | 2.08 | **1.02** |
-| `instancia2_4x4_sat` | $4 \times 4$ | 40 | 185 | **UNSAT** | 1.76 | **0.84** |
-| `instancia3_5x5_sat` | $5 \times 5$ | 60 | 306 | **SAT** | 3.88 | **3.59** |
-| `instancia4_6x6_sat` | $6 \times 6$ | 84 | 536 | **UNSAT** | 1.89 | **0.91** |
-| `instancia5_3x3_unsat` | $3 \times 3$ | 24 | 84 | **UNSAT** | 1.67 | **0.79** |
-| `problema11_base` | $5 \times 5$ | 60 | 265 | **UNSAT** | 1.46 | **0.81** |
+| Instância | Solver | Variáveis | Base | Cortes | Iterações | Resultado | Tempo (ms) |
+| :--- | :---: | ---: | ---: | ---: | ---: | :---: | ---: |
+| `instancia1_3x3_sat` | CaDiCaL | 24 | 99 | 0 | 1 | **SAT** | 1,511 |
+| `instancia1_3x3_sat` | Kissat | 24 | 99 | 0 | 1 | **SAT** | 0,865 |
+| `instancia2_4x4_unsat` | CaDiCaL | 40 | 186 | 0 | 1 | **UNSAT** | 1,379 |
+| `instancia2_4x4_unsat` | Kissat | 40 | 186 | 0 | 1 | **UNSAT** | 0,579 |
+| `instancia3_5x5_sat` | CaDiCaL | 60 | 305 | 1 | 2 | **SAT** | 3,113 |
+| `instancia3_5x5_sat` | Kissat | 60 | 305 | 2 | 3 | **SAT** | 3,625 |
+| `instancia4_6x6_unsat` | CaDiCaL | 84 | 537 | 0 | 1 | **UNSAT** | 1,350 |
+| `instancia4_6x6_unsat` | Kissat | 84 | 537 | 0 | 1 | **UNSAT** | 1,133 |
+| `instancia5_3x3_unsat` | CaDiCaL | 24 | 85 | 0 | 1 | **UNSAT** | 1,112 |
+| `instancia5_3x3_unsat` | Kissat | 24 | 85 | 0 | 1 | **UNSAT** | 0,545 |
+| `problema11_base` | CaDiCaL | 60 | 266 | 0 | 1 | **UNSAT** | 1,953 |
+| `problema11_base` | Kissat | 60 | 266 | 0 | 1 | **UNSAT** | 1,042 |
 
 ---
 
 ### Reconstrução Visual das Soluções Obtidas
+
+![Entrada, modelo com subtours e laço final da instância 5x5](resultados/instancia3_5x5_refinamento.svg)
 
 #### Solução da Instância `instancia1_3x3_sat` ($3 \times 3$)
 ```text
@@ -186,9 +206,19 @@ Executamos os dois SAT Solvers de ponta recomendados (**CaDiCaL 1.9.5** e **Kiss
 
 ## 5. Análise Crítica e Conclusão
 
-1. **Desempenho dos Solvers**: O solver **Kissat** apresentou tempos de execução ligeiramente inferiores ao **CaDiCaL** em quase todas as instâncias pequenas e médias, devido às suas heurísticas agressivas de eliminação de variáveis no pré-processamento. Ambos resolveram as instâncias em menos de 10 milissegundos.
-2. **Análise do Problema 11**: A instância do `Problema 11` contendo uma dica $4$ adjacente a uma dica $0$ é **analiticamente insatisfazível (UNSAT)**. A dica 4 obriga as 4 arestas da célula a serem ativas, enquanto a dica 0 proíbe a aresta compartilhada, gerando um conflito direto propagado instantaneamente por *unit propagation*.
-3. **Formalização e Complexidade**: A codificação proposicional FNC mostrou-se extremamente compacta e eficaz. A imposição de restrições de grau diminui drasticamente o espaço de busca ($2^{N}$), permitindo que solvers CDCL encontrem contradições ou soluções quase instantaneamente.
+1. **Desempenho dos Solvers**: Ambos resolveram as instâncias em poucos milissegundos. Em tempos tão pequenos, inicialização do processo e escalonamento do sistema impedem uma conclusão geral sobre superioridade.
+2. **Custo do Refinamento**: A instância 5x5 exigiu uma cláusula de corte no CaDiCaL e duas no Kissat. Solvers diferentes podem produzir modelos intermediários diferentes para o mesmo CNF.
+3. **Análise do Problema 11**: A instância do `Problema 11` contendo uma dica $4$ adjacente a uma dica $0$ é **analiticamente insatisfazível (UNSAT)**. A dica 4 obriga as 4 arestas da célula a serem ativas, enquanto a dica 0 proíbe a aresta compartilhada.
+4. **Formalização Alternativa**: A conectividade poderia ser codificada estaticamente com variáveis auxiliares de fluxo, alcance ou ordem. Isso produziria um único CNF, porém com mais variáveis e cláusulas. Para cardinalidades maiores, contadores sequenciais ou Tseitin também seriam alternativas à enumeração direta.
+5. **Formalização e Complexidade**: A codificação proposicional mostrou-se compacta. O refinamento adicionou somente as cláusulas globais efetivamente necessárias nos modelos encontrados.
+
+### Contribuições
+
+| Integrante | Contribuição principal | Registro |
+| :--- | :--- | :--- |
+| Arthur Oliveira | Estrutura, gerador e codificação local | `67ea8fa`, `dda3b3e` e commits subsequentes da `main` |
+| João Caique | Componentes, bloqueio de subtours e CEGAR | `36321c8`, `03123ea`, `04b8377` |
+| Gustavo Alexandre dos Santos | Requisitos, integração final, experimentos, visualização e relatório | `e650e56` e revisão final |
 
 ---
 

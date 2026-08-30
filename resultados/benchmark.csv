@@ -1,0 +1,13 @@
+instance,solver,variables,base_clauses,cuts,final_clauses,iterations,status,elapsed_ms
+instancia1_3x3_sat,cadical,24,99,0,99,1,SAT,1.511
+instancia1_3x3_sat,kissat,24,99,0,99,1,SAT,0.865
+instancia2_4x4_unsat,cadical,40,186,0,186,1,UNSAT,1.379
+instancia2_4x4_unsat,kissat,40,186,0,186,1,UNSAT,0.579
+instancia3_5x5_sat,cadical,60,305,1,306,2,SAT,3.113
+instancia3_5x5_sat,kissat,60,305,2,307,3,SAT,3.625
+instancia4_6x6_unsat,cadical,84,537,0,537,1,UNSAT,1.350
+instancia4_6x6_unsat,kissat,84,537,0,537,1,UNSAT,1.133
+instancia5_3x3_unsat,cadical,24,85,0,85,1,UNSAT,1.112
+instancia5_3x3_unsat,kissat,24,85,0,85,1,UNSAT,0.545
+problema11_base,cadical,60,266,0,266,1,UNSAT,1.953
+problema11_base,kissat,60,266,0,266,1,UNSAT,1.042

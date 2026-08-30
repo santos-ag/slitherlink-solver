@@ -1,6 +1,9 @@
 requisitos.pdf
 __pycache__/
 *.pyc
+.venv/
+.pytest_cache/
+*.tmp.cnf
 .codegraph
 .codegraph/
 .omo/

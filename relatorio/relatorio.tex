@@ -1,98 +1,219 @@
-\documentclass[12pt,a4paper]{article}
+\documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
-\usepackage[portuguese]{babel}
-\usepackage{amsmath,amssymb,amsfonts}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,array}
 \usepackage{geometry}
-\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
 \usepackage{listings}
 \usepackage{xcolor}
-\usepackage{hyperref}
 
-\geometry{margin=2.5cm}
+\geometry{margin=2.2cm}
+\hypersetup{colorlinks=true,urlcolor=blue!60!black,linkcolor=blue!60!black}
+\lstset{basicstyle=\ttfamily\small,backgroundcolor=\color{gray!8},frame=single,breaklines=true}
 
-\title{\textbf{Relatório de Formalização em SAT: Problema 11 (Slitherlink)}\\[0.5em]
-\large Disciplina: Lógica para Ciência da Computação (2026.1)}
-\author{\textbf{Universidade Federal do Cariri -- UFCA}\\
-\small Centro de Ciências e Tecnologia (CCT) --- Bacharelado em Ciência da Computação\\
-\small Professor: Luis Henrique Bustamante (\texttt{luis.bustamante@ufca.edu.br})}
-\date{\today}
+\title{\textbf{Formalização em SAT: Problema 11 -- Slitherlink}\\
+\large Modelagem proposicional, refinamento CEGAR e avaliação experimental}
+\author{Arthur Oliveira \and João Caique \and Gustavo Alexandre dos Santos}
+\date{30 de agosto de 2026}
 
 \begin{document}
-
 \maketitle
 
+\begin{center}
+Universidade Federal do Cariri -- CCT\\
+Lógica para Ciência da Computação -- 2026.1\\
+Professor: Luis Henrique Bustamante\\[1em]
+\url{https://github.com/santos-ag/slitherlink-solver}
+\end{center}
+
 \begin{abstract}
-Este relatório apresenta a formalização em Lógica Proposicional e a verificação experimental em SAT Solvers para o problema \textbf{Slitherlink} (Problema 11 --- Puzzles de Percurso). Descrevemos a representação em Forma Normal Conjuntiva (FNC), a contagem analítica de variáveis e cláusulas, a implementação do gerador de instâncias no formato DIMACS CNF e a avaliação de desempenho dos solvers de ponta \textsf{CaDiCaL} e \textsf{Kissat}.
+Este trabalho formaliza o Slitherlink em Forma Normal Conjuntiva (FNC). A codificação usa uma variável por aresta, restrições de cardinalidade nas células e grau 0 ou 2 nos vértices. Como essas restrições locais admitem vários ciclos desconectados, empregamos refinamento iterativo: modelos inválidos geram cláusulas de bloqueio até restar um único laço. Seis instâncias foram avaliadas com CaDiCaL e Kissat, incluindo casos SAT, UNSAT e um caso que exige múltiplas rodadas de refinamento.
 \end{abstract}
 
-\vspace{1em}
-\hrule
-\vspace{1em}
+\vfill
+\begin{center}
+\textbf{Palavras-chave:} lógica proposicional, SAT, Slitherlink, CNF, CEGAR.
+\end{center}
+\newpage
 
 \section{Introdução}
-O \textbf{Slitherlink} é um puzzle combinatório jogado sobre uma grade retangular $R \times C$. O objetivo consiste em determinar um único laço fechado simples sobre as arestas da grade, respeitando duas restrições:
+Slitherlink é um puzzle de percurso sobre uma grade retangular de células. Algumas células possuem uma dica numérica. O objetivo é selecionar arestas da grade que formem um único laço fechado, sem cruzamentos nem ramificações, de modo que cada dica seja igual ao número de arestas selecionadas ao redor de sua célula.
+
+O problema combina restrições locais e uma propriedade global. As dicas e os graus dos vértices podem ser expressos por cláusulas pequenas, mas a exigência de um único componente conexo depende de toda a solução. Essa separação torna o problema adequado ao estudo de SAT: a fórmula base captura a estrutura local e um processo de refinamento corrige modelos que ainda possuem subtours.
+
+\subsection{Regras consideradas}
 \begin{enumerate}
-    \item \textbf{Restrição Numérica por Célula}: Células com dica $k \in \{0,1,2,3,4\}$ devem possuir exatamente $k$ arestas ativas.
-    \item \textbf{Restrição de Grau}: Cada vértice deve ter grau $0$ ou $2$ (sem ramificações ou vértices mortos).
-    \item \textbf{Conectividade}: O laço deve ser único e conexo.
+  \item Uma célula com dica $k$ possui exatamente $k$ das quatro arestas ativas.
+  \item Cada vértice possui grau 0 ou 2, impedindo pontas, cruzamentos e ramificações.
+  \item Ao menos uma aresta deve estar ativa, eliminando a solução vazia.
+  \item Todas as arestas ativas pertencem ao mesmo componente conexo.
 \end{enumerate}
 
-\paragraph{Importância Computacional:} O Slitherlink é demonstradamente $NP$-completo (Yato, 2003). A formalização em FNC permite mapear a busca combinatória de caminhos para a resolução em SAT Solvers modernos baseados em CDCL (*Conflict-Driven Clause Learning*).
+\subsection{Interesse computacional}
+O Slitherlink é NP-completo. Uma atribuição candidata pode ser verificada em tempo polinomial: basta contar as arestas das células, calcular os graus e percorrer o grafo ativo. Entretanto, encontrar essa atribuição pode exigir busca exponencial. Solvers CDCL exploram propagação unitária, aprendizado de cláusulas e heurísticas de decisão para reduzir esse espaço.
 
-\section{Formalização Matemática em FNC}
-\subsection{Variáveis Proposicionais}
-Para uma grade $R \times C$, definimos:
-\begin{itemize}
-    \item $h_{i,j}$ ($0 \le i \le R, 0 \le j < C$): Arestas horizontais (Total: $(R+1)C$).
-    \item $v_{i,j}$ ($0 \le i < R, 0 \le j \le C$): Arestas verticais (Total: $R(C+1)$).
-\end{itemize}
-Total de variáveis proposicionais: $N = 2RC + R + C$.
+O projeto utiliza dois solvers modernos, CaDiCaL e Kissat. A comparação não busca estabelecer superioridade geral, pois as instâncias são pequenas, mas observar diferenças de modelos iniciais, quantidade de cortes e custo de inicialização.
+\newpage
 
-Codificação bijetiva DIMACS:
-$$\text{idx}(h_{i,j}) = 1 + i \cdot C + j, \qquad \text{idx}(v_{i,j}) = 1 + (R+1)C + i \cdot (C+1) + j$$
+\section{Variáveis Proposicionais}
+Considere uma grade com $R$ linhas e $C$ colunas de células. Existem $(R+1)C$ arestas horizontais e $R(C+1)$ arestas verticais. Para cada aresta $e$, definimos uma variável booleana $x_e$, verdadeira se e somente se a aresta pertence ao laço.
 
-\subsection{Famílias de Cláusulas em FNC}
-\begin{enumerate}
-    \item \textbf{Família de Células ($\mathcal{F}_{\text{célula}}$)}: Codifica restrições de cardinalidade exata $k \in \{0,1,2,3,4\}$ sobre as 4 arestas de cada célula via cláusulas FNC de no-mínimo e no-máximo.
-    \item \textbf{Família de Grau ($\mathcal{F}_{\text{grau}}$)}: Para cada vértice de grau incidente $d \in \{2,3,4\}$, proíbe-se graus 1, 3 e 4, admitindo apenas graus 0 ou 2.
-    \item \textbf{Família de Conectividade ($\mathcal{F}_{\text{conector}}$)}: Eliminação de subtours secundários via adição incremental de cláusulas de corte.
-\end{enumerate}
+\subsection{Mapeamento DIMACS}
+As horizontais $h_{i,j}$ são indexadas para $0\le i\le R$ e $0\le j<C$. As verticais $v_{i,j}$ usam $0\le i<R$ e $0\le j\le C$:
+\[
+\operatorname{idx}(h_{i,j})=1+iC+j,
+\qquad
+\operatorname{idx}(v_{i,j})=1+(R+1)C+i(C+1)+j.
+\]
+Logo, o número total de variáveis é:
+\[
+N=(R+1)C+R(C+1)=2RC+R+C.
+\]
 
-\subsection{Contagem Teórica}
-Para uma grade $3 \times 3$, temos $N = 24$ variáveis de arestas e entre $84$ e $98$ cláusulas FNC.
+\subsection{Exemplo pequeno}
+Uma grade $1\times1$ possui quatro arestas: $h_{0,0}=1$, $h_{1,0}=2$, $v_{0,0}=3$ e $v_{0,1}=4$. Uma dica 4 produz as cláusulas unitárias $(1)$, $(2)$, $(3)$ e $(4)$. As cláusulas de grau dos quatro cantos garantem que as duas arestas incidentes a cada canto tenham o mesmo valor.
 
-\section{Implementação do Gerador DIMACS}
-O gerador foi codificado em Python (\texttt{gerador.py}) garantindo a emissão estrita do cabeçalho \texttt{p cnf N M} e verificação de sanidade.
+\subsection{Formato de entrada}
+\begin{lstlisting}
+3 3
+3 . .
+. 2 .
+. . 3
+\end{lstlisting}
+A primeira linha informa $R$ e $C$. Cada linha seguinte deve conter exatamente $C$ valores; ponto representa uma célula sem dica. Valores fora de 0 a 4 são rejeitados antes da geração, evitando que uma entrada inválida seja silenciosamente interpretada como célula vazia.
+\newpage
 
-\section{Experimentação e Resultados}
-A Tabela~\ref{tab:resultados} resume os experimentos executados com os solvers \textsf{CaDiCaL} e \textsf{Kissat}.
+\section{Famílias de Cláusulas e Contagem}
+\subsection{Cardinalidade das células}
+Para as quatro arestas $E=\{e_1,\ldots,e_4\}$ de uma célula, codificamos exatamente $k$. Para $k=0$ ou $k=4$ são usadas quatro cláusulas unitárias. Para $k=1$, uma cláusula exige ao menos uma aresta e seis cláusulas binárias proíbem pares. Para $k=2$, quatro cláusulas positivas sobre triplas exigem ao menos duas e quatro triplas negativas permitem no máximo duas. O caso $k=3$ é dual ao caso $k=1$.
 
-\begin{table}[h!]
-\centering
-\caption{Resultados do Benchmark de SAT Solvers no Slitherlink.}
-\label{tab:resultados}
-\vspace{0.5em}
-\begin{tabular}{lcccccc}
+\begin{center}
+\begin{tabular}{ccc}
 \toprule
-\textbf{Instância} & \textbf{Dimensão} & \textbf{Vars ($N$)} & \textbf{Cláusulas ($M$)} & \textbf{Resultado} & \textbf{CaDiCaL (ms)} & \textbf{Kissat (ms)} \\
+Dica & Cláusulas & Restrição \\
 \midrule
-\texttt{instancia1\_3x3\_sat} & $3 \times 3$ & 24 & 98 & \textbf{SAT} & 2.08 & \textbf{1.02} \\
-\texttt{instancia2\_4x4\_sat} & $4 \times 4$ & 40 & 185 & \textbf{UNSAT} & 1.76 & \textbf{0.84} \\
-\texttt{instancia3\_5x5\_sat} & $5 \times 5$ & 60 & 306 & \textbf{SAT} & 3.88 & \textbf{3.59} \\
-\texttt{instancia4\_6x6\_sat} & $6 \times 6$ & 84 & 536 & \textbf{UNSAT} & 1.89 & \textbf{0.91} \\
-\texttt{instancia5\_3x3\_unsat} & $3 \times 3$ & 24 & 84 & \textbf{UNSAT} & 1.67 & \textbf{0.79} \\
-\texttt{problema11\_base} & $5 \times 5$ & 60 & 265 & \textbf{UNSAT} & 1.46 & \textbf{0.81} \\
+0 & 4 & todas falsas \\
+1 & 7 & exatamente uma \\
+2 & 8 & exatamente duas \\
+3 & 7 & exatamente três \\
+4 & 4 & todas verdadeiras \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{center}
+
+\subsection{Grau dos vértices}
+Em cada vértice são permitidos somente graus 0 e 2. Cantos usam duas cláusulas de equivalência. Vértices de borda usam quatro cláusulas para proibir graus 1 e 3. Vértices internos usam nove cláusulas para proibir graus 1, 3 e 4. Essas condições são necessárias e suficientes localmente: toda aresta ativa continua por outra, sem ramificação.
+
+Se $n_k$ é a quantidade de células com dica $k$, então:
+\[
+M_{grau}=8+4(2R+2C-4)+9(R-1)(C-1),
+\]
+\[
+M_{base}=M_{grau}+4n_0+7n_1+8n_2+7n_3+4n_4+1.
+\]
+O termo final exige ao menos uma aresta. Após o refinamento, $M_{final}=M_{base}+q$, onde $q$ é o número de cortes de subtour.
+\newpage
+
+\section{Implementação}
+\subsection{Gerador e verificação DIMACS}
+O arquivo \texttt{gerador.py} constrói as cláusulas e escreve o CNF na saída padrão. Antes da emissão, verifica dimensões, domínio das dicas, intervalo dos literais, terminadores e correspondência entre o cabeçalho e as cláusulas.
+\begin{lstlisting}[language=Python]
+def generate_dimacs(self):
+    self.validate()
+    header = f"p cnf {self.num_vars} {len(self.clauses)}"
+    lines = [comment, header, *serialized_clauses]
+    output = "\n".join(lines)
+    validate_dimacs(output)
+    return output
+\end{lstlisting}
+
+\subsection{Refinamento CEGAR}
+As restrições de grau garantem que cada componente ativo seja um ciclo, mas não garantem um único ciclo. Depois de cada resposta SAT, \texttt{refinamento.py} encontra componentes por busca em profundidade. Se houver mais de um, seleciona o menor componente $S$ e adiciona:
+\[
+\bigvee_{e\in S}\neg x_e.
+\]
+A cláusula afirma que ao menos uma aresta daquele subtour deve mudar. Ela é segura porque o ciclo já consome grau 2 em todos os seus vértices. O processo termina porque há um número finito de atribuições e cada corte elimina o modelo corrente.
+\begin{lstlisting}[language=Python]
+componentes = detectar_componentes_conexos(arestas)
+if len(componentes) == 1:
+    return solucao
+subtour = menor_componente(componentes)
+clausulas.append(gerar_clausula_bloqueio(
+    subtour, arestas, var_por_aresta))
+\end{lstlisting}
+\newpage
+
+\section{Experimentação}
+Foram executados CaDiCaL e Kissat em seis instâncias. O tempo é o acumulado das chamadas do solver durante o refinamento. ``Base'' indica cláusulas anteriores aos cortes e $q$ indica cortes adicionados.
+
+\begin{center}
+\scriptsize
+\begin{tabular}{l l r r r r l r}
+\toprule
+Instância & Solver & $N$ & Base & $q$ & Iter. & Resultado & ms \\
+\midrule
+instancia1\_3x3\_sat & CaDiCaL & 24 & 99 & 0 & 1 & SAT & 1,511 \\
+instancia1\_3x3\_sat & Kissat & 24 & 99 & 0 & 1 & SAT & 0,865 \\
+instancia2\_4x4\_unsat & CaDiCaL & 40 & 186 & 0 & 1 & UNSAT & 1,379 \\
+instancia2\_4x4\_unsat & Kissat & 40 & 186 & 0 & 1 & UNSAT & 0,579 \\
+instancia3\_5x5\_sat & CaDiCaL & 60 & 305 & 1 & 2 & SAT & 3,113 \\
+instancia3\_5x5\_sat & Kissat & 60 & 305 & 2 & 3 & SAT & 3,625 \\
+instancia4\_6x6\_unsat & CaDiCaL & 84 & 537 & 0 & 1 & UNSAT & 1,350 \\
+instancia4\_6x6\_unsat & Kissat & 84 & 537 & 0 & 1 & UNSAT & 1,133 \\
+instancia5\_3x3\_unsat & CaDiCaL & 24 & 85 & 0 & 1 & UNSAT & 1,112 \\
+instancia5\_3x3\_unsat & Kissat & 24 & 85 & 0 & 1 & UNSAT & 0,545 \\
+problema11\_base & CaDiCaL & 60 & 266 & 0 & 1 & UNSAT & 1,953 \\
+problema11\_base & Kissat & 60 & 266 & 0 & 1 & UNSAT & 1,042 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Os tempos são uma medição do ambiente de desenvolvimento e não um estudo estatístico. Em execuções tão curtas, inicialização e escalonamento do sistema podem dominar as diferenças. O dado principal é que a instância $5\times5$ exigiu uma rodada de corte no CaDiCaL e duas no Kissat, mostrando que diferentes modelos iniciais alteram o custo do refinamento.
+\newpage
+
+\section{Soluções Reconstruídas}
+A instância $3\times3$ produz diretamente um único laço. A instância $5\times5$ é mais informativa: o primeiro modelo satisfaz todas as restrições locais, mas contém ciclos desconectados. A Figura~\ref{fig:refinamento} mostra a entrada, um modelo intermediário inválido e a solução conectada retornada pelo Kissat.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{../resultados/instancia3_5x5_refinamento.png}
+\caption{Entrada, modelo com subtours e laço final da instância $5\times5$.}
+\label{fig:refinamento}
+\end{figure}
+
+A reconstrução também funciona como verificação independente: as variáveis positivas são convertidas novamente em coordenadas horizontais e verticais, e a busca de componentes confirma que o resultado possui exatamente um laço. As representações ASCII e gráficas são geradas a partir do modelo retornado, não desenhadas manualmente.
+
+Na instância base do Problema 11, a dica 4 é adjacente a uma dica 0. A primeira obriga a aresta compartilhada e a segunda a proíbe, produzindo UNSAT por propagação unitária, sem necessidade de refinamento.
+\newpage
 
 \section{Análise Crítica e Conclusão}
-O solver \textsf{Kissat} obteve desempenho superior no pré-processamento. A instância do \texttt{Problema 11} provou-se analiticamente \textbf{UNSAT} devido à adjacência entre células com dicas 4 e 0. A formalização proposicional em FNC mostrou-se robusta e altamente eficiente.
+As instâncias foram resolvidas em poucos milissegundos, indicando que a codificação local é compacta para as grades estudadas. O resultado mais relevante não é a diferença absoluta de tempo, mas os modelos iniciais diferentes: na instância $5\times5$, o CaDiCaL precisou de um corte e o Kissat de dois. O custo do refinamento depende da busca interna, não apenas de $R$ e $C$.
+
+\subsection{Formalização alternativa}
+A conectividade poderia ser codificada estaticamente com variáveis auxiliares de alcance, fluxo ou ordem, escolhendo uma raiz e exigindo que toda aresta ativa seja alcançável. Essa alternativa produz um único CNF, mas adiciona muitas variáveis e cláusulas. Também seria possível aplicar Tseitin a subfórmulas de cardinalidade ou usar contadores sequenciais. Para quatro arestas por célula, a enumeração direta é pequena e transparente; para restrições maiores, contadores seriam mais econômicos.
+
+O refinamento mantém a fórmula base compacta e adiciona somente cortes observados. Sua desvantagem é executar o solver várias vezes e tornar $M_{final}$ dependente dos modelos encontrados. Neste conjunto foram necessários no máximo dois cortes, favorecendo a abordagem incremental.
+
+\subsection{Contribuições}
+\begin{center}
+\small
+\begin{tabular}{p{3.2cm}p{7.5cm}p{3.1cm}}
+\toprule
+Integrante & Contribuição & Registro \\
+\midrule
+Arthur Oliveira & Estrutura, gerador e codificação local & 67ea8fa, dda3b3e e main \\
+João Caique & Componentes, bloqueio de subtours e CEGAR & 36321c8, 03123ea, 04b8377 \\
+Gustavo A. dos Santos & Requisitos, integração, experimentos, visualização e relatório & e650e56 e revisão final \\
+\bottomrule
+\end{tabular}
+\end{center}
 
 \begin{thebibliography}{9}
-\bibitem{avigad} Avigad, J. \textit{Mathematical Logic and Computation}, Cambridge University Press, 2022.
-\bibitem{biere} Biere, A. et al. \textit{Handbook of Satisfiability}, IOS Press, 2ª ed., 2021.
-\bibitem{yato} Yato, T. \textit{On the NP-completeness of Slitherlink}, IPSJ SIG Notes, 2003.
+\bibitem{avigad} Avigad, J. \textit{Mathematical Logic and Computation}. Cambridge University Press, 2022.
+\bibitem{biere} Biere, A. et al. \textit{Handbook of Satisfiability}. 2. ed. IOS Press, 2021.
+\bibitem{yato} Yato, T. \textit{On the NP-completeness of Slitherlink}. IPSJ SIG Notes, 2003.
 \end{thebibliography}
-
 \end{document}

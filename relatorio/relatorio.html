@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Formalizacao em SAT: Slitherlink</title>
+  <style>
+    @page { size: A4; margin: 15mm 17mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172033; font: 10.5pt/1.42 Georgia, "Times New Roman", serif; }
+    .page { break-after: page; position: relative; }
+    .page:last-child { break-after: auto; }
+    .page-number { display: none; }
+    h1, h2, h3 { color: #102a43; break-after: avoid; }
+    h1 { font: 700 25pt/1.15 Arial, sans-serif; margin: 0 0 8mm; }
+    h2 { font: 700 17pt/1.2 Arial, sans-serif; border-bottom: 1.5px solid #2f6690; padding-bottom: 2mm; margin: 0 0 5mm; }
+    h3 { font: 700 12pt Arial, sans-serif; margin: 5mm 0 2mm; }
+    p { margin: 0 0 3mm; text-align: justify; }
+    ul, ol { margin: 2mm 0 4mm 6mm; padding-left: 5mm; }
+    li { margin-bottom: 1.5mm; }
+    code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.7pt; }
+    pre { background: #f2f5f8; border-left: 3px solid #2f6690; padding: 3mm; margin: 3mm 0; white-space: pre-wrap; line-height: 1.3; }
+    table { width: 100%; border-collapse: collapse; margin: 3mm 0 4mm; font-size: 8.5pt; }
+    th { background: #173f5f; color: white; font-family: Arial, sans-serif; }
+    th, td { border: 1px solid #aab7c4; padding: 1.6mm 1.4mm; text-align: center; }
+    td:first-child, th:first-child { text-align: left; }
+    tr:nth-child(even) td { background: #f3f6f8; }
+    .cover { min-height: 245mm; display: flex; flex-direction: column; justify-content: center; text-align: center; }
+    .cover p { text-align: center; }
+    .subtitle { color: #2f6690; font: 15pt Arial, sans-serif; margin-bottom: 15mm; }
+    .meta { font: 11pt/1.65 Arial, sans-serif; }
+    .abstract { margin-top: 15mm; padding: 5mm; background: #f3f6f8; border-top: 2px solid #2f6690; text-align: justify; }
+    .formula { text-align: center; font: italic 12pt Georgia, serif; padding: 3mm; background: #f7f9fb; }
+    .callout { padding: 3mm 4mm; border-left: 4px solid #c47f00; background: #fff8e8; margin: 4mm 0; }
+    .figure { width: 100%; max-height: 105mm; object-fit: contain; margin: 2mm auto; display: block; }
+    .caption { text-align: center; color: #526174; font-size: 9pt; margin-bottom: 4mm; }
+    .ascii { font-size: 8pt; line-height: 1.15; columns: 2; column-gap: 8mm; }
+    .small { font-size: 8.8pt; }
+    .refs { font-size: 9pt; }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="cover">
+      <p>Universidade Federal do Cariri - Centro de Ciencias e Tecnologia</p>
+      <p>Logica para Ciencia da Computacao - 2026.1</p>
+      <h1>Formalizacao em SAT:<br>Problema 11 - Slitherlink</h1>
+      <div class="subtitle">Modelagem proposicional, refinamento CEGAR e avaliacao experimental</div>
+      <div class="meta">
+        <strong>Arthur Oliveira</strong><br>
+        <strong>Joao Caique</strong><br>
+        <strong>Gustavo Alexandre dos Santos</strong><br><br>
+        Professor: Luis Henrique Bustamante<br>
+        Repositorio: <a href="https://github.com/santos-ag/slitherlink-solver">github.com/santos-ag/slitherlink-solver</a><br>
+        30 de agosto de 2026
+      </div>
+      <div class="abstract">
+        <strong>Resumo.</strong> Este trabalho formaliza o Slitherlink em Forma Normal Conjuntiva (FNC). A codificacao usa uma variavel por aresta, restricoes de cardinalidade nas celulas e grau 0 ou 2 nos vertices. Como essas restricoes locais admitem varios ciclos desconectados, empregamos refinamento iterativo: modelos invalidos geram clausulas de bloqueio ate restar um unico laco. Seis instancias foram avaliadas com CaDiCaL e Kissat, incluindo casos SAT, UNSAT e um caso que exige multiplas rodadas de refinamento.
+      </div>
+    </div>
+    <span class="page-number">1</span>
+  </section>
+
+  <section class="page">
+    <h2>1. Introducao</h2>
+    <p>Slitherlink e um puzzle de percurso sobre uma grade retangular de celulas. Algumas celulas possuem uma dica numerica. O objetivo e selecionar arestas da grade que formem um unico laco fechado, sem cruzamentos nem ramificacoes, de modo que cada dica seja igual ao numero de arestas selecionadas ao redor de sua celula.</p>
+    <p>O problema combina restricoes locais e uma propriedade global. As dicas e os graus dos vertices podem ser expressos por clausulas pequenas, mas a exigencia de um unico componente conexo depende de toda a solucao. Essa separacao torna o problema adequado ao estudo de SAT: a formula base captura a estrutura local e um processo de refinamento corrige modelos que ainda possuem subtours.</p>
+
+    <h3>1.1 Regras consideradas</h3>
+    <ol>
+      <li>Uma celula com dica <em>k</em> possui exatamente <em>k</em> das quatro arestas ativas.</li>
+      <li>Cada vertice possui grau 0 ou 2. Assim, nao existem pontas soltas, cruzamentos ou ramificacoes.</li>
+      <li>Ao menos uma aresta deve estar ativa, eliminando a solucao vazia.</li>
+      <li>Todas as arestas ativas pertencem ao mesmo componente conexo.</li>
+    </ol>
+
+    <h3>1.2 Interesse computacional</h3>
+    <p>O Slitherlink e NP-completo. Uma atribuicao candidata pode ser verificada em tempo polinomial: basta contar as arestas das celulas, calcular os graus e percorrer o grafo ativo. Entretanto, encontrar essa atribuicao pode exigir busca exponencial. Solvers CDCL exploram propagacao unitaria, aprendizado de clausulas e heuristicas de decisao para reduzir esse espaco.</p>
+    <p>O projeto utiliza dois solvers modernos, CaDiCaL e Kissat. A comparacao nao busca estabelecer superioridade geral, pois as instancias sao pequenas, mas observar diferencas de modelos iniciais, quantidade de cortes e custo de inicializacao.</p>
+
+    <div class="callout"><strong>Escopo.</strong> O Problema 11 (Slitherlink) foi selecionado da lista de problemas da disciplina. A entrega inclui gerador DIMACS, automacao experimental, reconstrucao da solucao, visualizacao e fontes do relatorio.</div>
+    <span class="page-number">2</span>
+  </section>
+
+  <section class="page">
+    <h2>2. Variaveis proposicionais</h2>
+    <p>Considere uma grade com <em>R</em> linhas e <em>C</em> colunas de celulas. Existem (R+1)C arestas horizontais e R(C+1) arestas verticais. Para cada aresta <em>e</em>, definimos uma variavel booleana x<sub>e</sub>, verdadeira se e somente se a aresta pertence ao laco.</p>
+
+    <h3>2.1 Mapeamento DIMACS</h3>
+    <p>As horizontais h<sub>i,j</sub> sao indexadas para 0 &le; i &le; R e 0 &le; j &lt; C. As verticais v<sub>i,j</sub> usam 0 &le; i &lt; R e 0 &le; j &le; C:</p>
+    <div class="formula">idx(h<sub>i,j</sub>) = 1 + iC + j</div>
+    <div class="formula">idx(v<sub>i,j</sub>) = 1 + (R+1)C + i(C+1) + j</div>
+    <p>Logo, o total de variaveis e:</p>
+    <div class="formula">N = (R+1)C + R(C+1) = 2RC + R + C.</div>
+
+    <h3>2.2 Exemplo 1x1</h3>
+    <p>Uma grade 1x1 possui quatro arestas: h<sub>0,0</sub>=1, h<sub>1,0</sub>=2, v<sub>0,0</sub>=3 e v<sub>0,1</sub>=4. Uma dica 4 produz as clausulas unitarias (1), (2), (3) e (4). As clausulas de grau dos quatro cantos garantem que as duas arestas incidentes a cada canto tenham o mesmo valor.</p>
+
+    <h3>2.3 Formato de entrada</h3>
+    <pre><code>3 3
+3 . .
+. 2 .
+. . 3</code></pre>
+    <p>A primeira linha informa R e C. Cada linha seguinte deve conter exatamente C valores; ponto representa uma celula sem dica. Valores fora de 0 a 4 sao rejeitados antes da geracao, evitando que uma entrada invalida seja silenciosamente interpretada como celula vazia.</p>
+    <span class="page-number">3</span>
+  </section>
+
+  <section class="page">
+    <h2>3. Familias de clausulas e contagem</h2>
+    <h3>3.1 Cardinalidade das celulas</h3>
+    <p>Para as quatro arestas E={e<sub>1</sub>,...,e<sub>4</sub>} de uma celula, codificamos exatamente <em>k</em>. Para k=0 ou k=4 sao usadas quatro clausulas unitarias. Para k=1, uma clausula exige ao menos uma aresta e seis clausulas binarias proibem pares. Para k=2, quatro clausulas positivas sobre triplas exigem ao menos duas e quatro triplas negativas permitem no maximo duas. O caso k=3 e dual ao caso k=1.</p>
+    <table>
+      <tr><th>Dica</th><th>Clausulas</th><th>Restricao</th></tr>
+      <tr><td>0</td><td>4</td><td>todas as arestas falsas</td></tr>
+      <tr><td>1</td><td>7</td><td>ao menos uma e no maximo uma</td></tr>
+      <tr><td>2</td><td>8</td><td>ao menos duas e no maximo duas</td></tr>
+      <tr><td>3</td><td>7</td><td>ao menos tres e no maximo tres</td></tr>
+      <tr><td>4</td><td>4</td><td>todas as arestas verdadeiras</td></tr>
+    </table>
+
+    <h3>3.2 Grau dos vertices</h3>
+    <p>Em cada vertice sao permitidos somente graus 0 e 2. Cantos, com duas arestas incidentes, usam uma equivalencia de duas clausulas. Vertices de borda, com tres arestas, usam quatro clausulas para proibir graus 1 e 3. Vertices internos usam nove clausulas para proibir graus 1, 3 e 4. Essas condicoes sao necessarias e suficientes localmente: toda aresta ativa continua por outra aresta, sem ramificacao.</p>
+
+    <h3>3.3 Formula geral</h3>
+    <p>Se n<sub>k</sub> e a quantidade de celulas com dica k, para R,C &ge; 1:</p>
+    <div class="formula">M<sub>grau</sub> = 8 + 4(2R+2C-4) + 9(R-1)(C-1)</div>
+    <div class="formula">M<sub>base</sub> = M<sub>grau</sub> + 4n<sub>0</sub> + 7n<sub>1</sub> + 8n<sub>2</sub> + 7n<sub>3</sub> + 4n<sub>4</sub> + 1</div>
+    <p>O termo final e a clausula que exige ao menos uma aresta ativa. Depois do refinamento, M<sub>final</sub>=M<sub>base</sub>+q, onde q e o numero de cortes de subtour encontrados durante a execucao.</p>
+    <span class="page-number">4</span>
+  </section>
+
+  <section class="page">
+    <h2>4. Implementacao</h2>
+    <h3>4.1 Gerador e verificacao DIMACS</h3>
+    <p>O arquivo <code>gerador.py</code> constroi as clausulas e escreve o CNF na saida padrao. Antes da emissao, a implementacao verifica dimensoes, dominio das dicas, intervalo dos literais, terminadores e correspondencia entre o cabecalho e as clausulas.</p>
+    <pre><code>def generate_dimacs(self):
+    self.validate()
+    header = f"p cnf {self.num_vars} {len(self.clauses)}"
+    lines = [comment, header, *serialized_clauses]
+    output = "\n".join(lines)
+    validate_dimacs(output)
+    return output</code></pre>
+
+    <h3>4.2 Refinamento CEGAR</h3>
+    <p>As restricoes de grau garantem que cada componente ativo seja um ciclo, mas nao garantem um unico ciclo. Depois de cada resposta SAT, <code>refinamento.py</code> encontra componentes por busca em profundidade. Se houver mais de um, seleciona o menor componente S e adiciona:</p>
+    <div class="formula">&or;<sub>e &isin; S</sub> &not;x<sub>e</sub></div>
+    <p>A clausula afirma que ao menos uma aresta daquele subtour deve mudar. Ela e segura porque um ciclo isolado ja consome grau 2 em todos os seus vertices; qualquer laco global que passe por esses vertices precisa remover ao menos uma de suas arestas. O processo termina porque existe um numero finito de atribuicoes e cada corte elimina o modelo corrente.</p>
+    <pre><code>componentes = detectar_componentes_conexos(arestas)
+if len(componentes) == 1:
+    return solucao
+subtour = menor_componente(componentes)
+clausulas.append(
+    gerar_clausula_bloqueio(subtour, arestas, var_por_aresta)
+)</code></pre>
+
+    <h3>4.3 Organizacao e testes</h3>
+    <p>O runner usa arquivos temporarios fora do repositorio, aceita limite de tempo e iteracoes e exporta CSV. A suite automatizada cobre parser, cardinalidade 1x1, cabecalho DIMACS, componentes artificiais e integracao real com os solvers empacotados.</p>
+    <span class="page-number">5</span>
+  </section>
+
+  <section class="page">
+    <h2>5. Experimentacao</h2>
+    <p>Foram executados CaDiCaL e Kissat em seis instancias. O tempo apresentado e o acumulado das chamadas do solver durante o refinamento, medido com relogio monotonicamente crescente. Base indica clausulas anteriores aos cortes; q indica cortes adicionados. Os binarios e o CSV bruto acompanham o repositorio.</p>
+    <table>
+      <tr><th>Instancia</th><th>Solver</th><th>N</th><th>Base</th><th>q</th><th>Iter.</th><th>Resultado</th><th>ms</th></tr>
+      <tr><td>instancia1_3x3_sat</td><td>CaDiCaL</td><td>24</td><td>99</td><td>0</td><td>1</td><td>SAT</td><td>1,511</td></tr>
+      <tr><td>instancia1_3x3_sat</td><td>Kissat</td><td>24</td><td>99</td><td>0</td><td>1</td><td>SAT</td><td>0,865</td></tr>
+      <tr><td>instancia2_4x4_unsat</td><td>CaDiCaL</td><td>40</td><td>186</td><td>0</td><td>1</td><td>UNSAT</td><td>1,379</td></tr>
+      <tr><td>instancia2_4x4_unsat</td><td>Kissat</td><td>40</td><td>186</td><td>0</td><td>1</td><td>UNSAT</td><td>0,579</td></tr>
+      <tr><td>instancia3_5x5_sat</td><td>CaDiCaL</td><td>60</td><td>305</td><td>1</td><td>2</td><td>SAT</td><td>3,113</td></tr>
+      <tr><td>instancia3_5x5_sat</td><td>Kissat</td><td>60</td><td>305</td><td>2</td><td>3</td><td>SAT</td><td>3,625</td></tr>
+      <tr><td>instancia4_6x6_unsat</td><td>CaDiCaL</td><td>84</td><td>537</td><td>0</td><td>1</td><td>UNSAT</td><td>1,350</td></tr>
+      <tr><td>instancia4_6x6_unsat</td><td>Kissat</td><td>84</td><td>537</td><td>0</td><td>1</td><td>UNSAT</td><td>1,133</td></tr>
+      <tr><td>instancia5_3x3_unsat</td><td>CaDiCaL</td><td>24</td><td>85</td><td>0</td><td>1</td><td>UNSAT</td><td>1,112</td></tr>
+      <tr><td>instancia5_3x3_unsat</td><td>Kissat</td><td>24</td><td>85</td><td>0</td><td>1</td><td>UNSAT</td><td>0,545</td></tr>
+      <tr><td>problema11_base</td><td>CaDiCaL</td><td>60</td><td>266</td><td>0</td><td>1</td><td>UNSAT</td><td>1,953</td></tr>
+      <tr><td>problema11_base</td><td>Kissat</td><td>60</td><td>266</td><td>0</td><td>1</td><td>UNSAT</td><td>1,042</td></tr>
+    </table>
+    <p class="small">Os tempos sao uma medicao do ambiente de desenvolvimento e nao um estudo estatistico. Em execucoes tao curtas, escalonamento do sistema e inicializacao do processo podem dominar a diferenca entre solvers.</p>
+    <span class="page-number">6</span>
+  </section>
+
+  <section class="page">
+    <h2>6. Solucoes reconstruidas</h2>
+    <p>A instancia 3x3 produz diretamente um unico laco. A instancia 5x5 e mais informativa: o primeiro modelo satisfaz todas as restricoes locais, mas contem ciclos desconectados. No CaDiCaL foi necessario um corte; no Kissat, dois. A figura mostra a entrada, um modelo intermediario invalido e a solucao conectada retornada pelo Kissat.</p>
+    <img class="figure" src="../resultados/instancia3_5x5_refinamento.png" alt="Instancia, subtours e laco final">
+    <div class="caption">Figura 1 - Refinamento da instancia 5x5: entrada, contraexemplo e laco final.</div>
+    <div class="ascii"><pre><code>3x3 SAT
++---+   +   +
+| 3 |
++   +   +   +
+|   | 2
++   +---+---+
+|         3 |
++---+---+---+
+
+5x5 SAT
++   +---+   +---+   +
+    | 3 |   | 3 |
++---+   +---+   +---+
+| 3       2       3 |
++---+---+---+   +---+
+      2     | 2 |
++---+---+---+   +---+
+| 3       2       3 |
++---+   +---+   +---+
+    | 3 |   | 3 |
++   +---+   +---+   +</code></pre></div>
+    <p>A reconstrucao tambem funciona como verificacao independente do modelo: as variaveis positivas sao convertidas novamente em coordenadas horizontais e verticais, e a busca de componentes confirma que o resultado possui exatamente um laco.</p>
+    <span class="page-number">7</span>
+  </section>
+
+  <section class="page">
+    <h2>7. Analise critica e conclusao</h2>
+    <p>As instancias foram resolvidas em poucos milissegundos, indicando que a codificacao local e compacta para as grades estudadas. O resultado mais relevante nao e a diferenca absoluta de tempo, mas o fato de solvers distintos escolherem modelos iniciais diferentes: na instancia 5x5, o CaDiCaL precisou de um corte e o Kissat de dois. Isso evidencia que o custo do refinamento depende da busca interna, nao apenas de R e C.</p>
+
+    <h3>7.1 Formalizacao alternativa</h3>
+    <p>A conectividade poderia ser codificada estaticamente com variaveis auxiliares de alcance, fluxo ou ordem, escolhendo uma raiz e exigindo que toda aresta ativa seja alcancavel. Essa alternativa produz um unico CNF, mas adiciona muitas variaveis e clausulas. Tambem seria possivel aplicar Tseitin a subformulas de cardinalidade ou usar contadores sequenciais. Para quatro arestas por celula, a enumeracao direta e pequena e transparente; para restricoes maiores, contadores seriam mais economicos.</p>
+    <p>O refinamento adotado mantem a formula base compacta e adiciona somente cortes observados. Sua desvantagem e executar o solver varias vezes e tornar M<sub>final</sub> dependente dos modelos encontrados. Para as instancias avaliadas, foram necessarios no maximo dois cortes, favorecendo a abordagem incremental.</p>
+
+    <h3>7.2 Contribuicoes</h3>
+    <table>
+      <tr><th>Integrante</th><th>Contribuicao</th><th>Registro principal</th></tr>
+      <tr><td>Arthur Oliveira</td><td>Gerador, codificacao de celulas e graus, estrutura inicial</td><td>67ea8fa, dda3b3e e commits subsequentes da main</td></tr>
+      <tr><td>Joao Caique</td><td>Componentes, bloqueio de subtours e prototipo CEGAR</td><td>36321c8, 03123ea, 04b8377</td></tr>
+      <tr><td>Gustavo A. dos Santos</td><td>Requisitos, integracao final, experimentos, visualizacao e relatorio</td><td>e650e56 e revisao final</td></tr>
+    </table>
+
+    <h3>Referencias</h3>
+    <div class="refs">
+      <p>[1] AVIGAD, J. <em>Mathematical Logic and Computation</em>. Cambridge University Press, 2022.</p>
+      <p>[2] BIERE, A. et al. <em>Handbook of Satisfiability</em>. 2. ed. IOS Press, 2021.</p>
+      <p>[3] YATO, T. <em>On the NP-completeness of Slitherlink</em>. IPSJ SIG Notes, 2003.</p>
+    </div>
+    <span class="page-number">8</span>
+  </section>
+</body>
+</html>
