@@ -5,3 +5,4 @@ __pycache__/
 .codegraph/
 .omo/
 .omo
+.venv/

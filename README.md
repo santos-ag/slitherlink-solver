@@ -9,7 +9,9 @@
 ```text
 trabalho/
 ├── gerador.py            # Gerador CLI de instâncias no formato DIMACS CNF
+├── refinamento.py        # Refinamento iterativo (eliminação de subtours) com PySAT + NetworkX
 ├── solver_runner.py      # Automação do benchmark e reconstrução ASCII das soluções
+├── requirements.txt      # Dependências Python (python-sat, networkx)
 ├── relatorio.md          # Relatório completo do trabalho em formato Markdown
 ├── relatorio.pdf          # Relatório completo do trabalho compilado em PDF
 ├── Makefile              # Automação para execução dos testes e compilação
@@ -20,7 +22,7 @@ trabalho/
 │   ├── instancia4_6x6_sat.cnf
 │   ├── instancia5_3x3_unsat.cnf
 │   └── problema11_base.cnf
-└── solvers/              # Executáveis compilados dos SAT Solvers
+└── solvers/              # Executáveis compilados dos SAT Solvers (uso via linha de comando)
     ├── cadical
     └── kissat
 ```
@@ -36,7 +38,7 @@ python3 gerador.py instancias/instancia1_3x3_sat.txt > instancias/instancia1_3x3
 ```
 
 ### 2. Executar os SAT Solvers e o Benchmark
-Para rodar a automação de testes com os solvers **CaDiCaL** e **Kissat** sobre todas as instâncias e visualizar as soluções reconstruídas em ASCII:
+Para rodar a automação de testes com os solvers **CaDiCaL** e **Kissat** (via PySAT, resolvidos em processo com refinamento iterativo para eliminar subtours) sobre todas as instâncias e visualizar as soluções reconstruídas em ASCII:
 ```bash
 python3 solver_runner.py
 ```
@@ -55,4 +57,10 @@ make test
 
 ## Requisitos
 - Python 3.8+
-- Compilador C/C++ (`gcc` / `g++`) e `make` (caso deseje recompilar os solvers em `solvers/`)
+- Bibliotecas Python `python-sat` e `networkx` (usadas por `refinamento.py`), instaláveis via:
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install -r requirements.txt
+  ```
+- Compilador C/C++ (`gcc` / `g++`) e `make` (caso deseje recompilar os solvers em `solvers/`, usados apenas na execução via linha de comando da Seção 3)
